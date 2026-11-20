@@ -7,6 +7,14 @@ authors:
     affiliation: "Robotics Institute, Carnegie Mellon University"
     orcid: "https://orcid.org/0000-0003-0508-6213"
 version: 1.0.0
+doi: 10.5281/zenodo.24389631
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.24389631
+    description: "All versions (Zenodo concept DOI)"
+  - type: doi
+    value: 10.5281/zenodo.24389632
+    description: "Version 1.0.0"
 license: MIT
 repository-code: "https://github.com/eyal-weiss/emeans-net-gain-revival"
 preferred-citation:

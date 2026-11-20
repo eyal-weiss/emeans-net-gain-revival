@@ -1,5 +1,7 @@
 # Net-gain revival for e-means
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24389631.svg)](https://doi.org/10.5281/zenodo.24389631)
+
 Code, protocols and run records for *Revive What Pays: Evidence-Weighted Net-Gain Revival for Mini-Batch k-Means*
 (Eyal Weiss, 2026). **The paper will appear on arXiv within a few days; this README will then link it.**
 
@@ -94,6 +96,9 @@ The experiments ran on two machines, named `host_a` and `host_b` in the code and
 code. Third-party notices: `NOTICE`.
 
 ## Citation
+
+The code and data are archived on Zenodo: version 1.0.0, [10.5281/zenodo.24389632](https://doi.org/10.5281/zenodo.24389632);
+all versions, [10.5281/zenodo.24389631](https://doi.org/10.5281/zenodo.24389631).
 
 ```bibtex
 @misc{weiss2026netgain,

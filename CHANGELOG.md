@@ -4,6 +4,7 @@ Versions are tagged; each release is archived on Zenodo with its own DOI. Record
 released version are never changed later; new studies are added next to them.
 
 ## v1.0.0 (2026-11)
+Archived on Zenodo: [10.5281/zenodo.24389632](https://doi.org/10.5281/zenodo.24389632).
 First release, accompanying the paper "Revive What Pays: Evidence-Weighted Net-Gain Revival for Mini-Batch k-Means":
 the clean implementation (`net_gain_revival/`), the research code of the paper's runs (`research/`), the records of the
 two pre-registered rounds, the later experiments and the development runs (`results/`), the protocols and the
