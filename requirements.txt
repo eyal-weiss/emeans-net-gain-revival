@@ -1,0 +1,4 @@
+# FAISS must be built from PR #5915 at commit 98deaca (see README.md); the rest:
+numpy>=2,<2.6
+scipy
+pytest

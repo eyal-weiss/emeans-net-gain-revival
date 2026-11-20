@@ -1,0 +1,27 @@
+This repository is released under the MIT License (see LICENSE), Copyright (c) 2026 Eyal Weiss.
+
+Parts of the research code in research/ are adapted from, or subclass and reproduce behaviour of, code under the
+following license:
+
+  FAISS (https://github.com/facebookresearch/faiss), including the e-means driver of pull request #5915
+  (https://github.com/facebookresearch/faiss/pull/5915), and o-means (https://github.com/owlgebra-ai/faiss),
+  a fork of FAISS. In particular: research/omeans_netgain.py adapts the training loop of o-means
+  (faiss/contrib/o_means/o_means.py); research/ngp_interval.py copies the revival-check step of the e-means driver
+  (faiss/contrib/e_means/base.py); the classes in research/ subclass the e-means driver's NumpyEmeans and PyTorch Emeans.
+
+  MIT License
+
+  Copyright (c) Meta Platforms, Inc. and affiliates.
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+  documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
+  rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit
+  persons to whom the Software is furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all copies or substantial portions of the
+  Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+  WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+  COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+  OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

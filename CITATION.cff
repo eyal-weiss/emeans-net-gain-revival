@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use this software or its data, please cite the paper and this repository."
+title: "Net-gain revival for e-means: code, protocols and run records"
+authors:
+  - family-names: Weiss
+    given-names: Eyal
+    affiliation: "Robotics Institute, Carnegie Mellon University"
+    orcid: "https://orcid.org/0000-0003-0508-6213"
+version: 1.0.0
+license: MIT
+repository-code: "https://github.com/eyal-weiss/emeans-net-gain-revival"
+preferred-citation:
+  type: article
+  title: "Revive What Pays: Evidence-Weighted Net-Gain Revival for Mini-Batch k-Means"
+  authors:
+    - family-names: Weiss
+      given-names: Eyal
+      orcid: "https://orcid.org/0000-0003-0508-6213"
+  year: 2026
+  notes: "arXiv identifier to be added"
