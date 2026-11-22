@@ -30,7 +30,12 @@ rule of FAISS 1.16, `ours` = distance-aware revival, `h21` = cost-based revival 
 | check interval, newer driver | `interval_grid.py` with `ngp_interval.py`; `prhead_grid.py` with `ngp_head.py` | `side_analyze.py` | `side_interval`, `side_pr_head` |
 | GPU e-means and o-means | `gpu_netgain_run.py` with `netgain_torch.py`, `omeans_netgain.py` | `side_analyze.py` | `gpu_and_omeans` |
 | decision as a pure function | `netgain_rule_check.py` (4,926 of 4,926 checks identical) | | |
+| round 3 (check interval; the freeze on the newer driver) | `round3/interval_grid.py` with `ngp_interval.py`; `round3/round3_prhead.py` with `round3/prhead_grid.py` and `ngp_head.py`; `round3/launch_r3.sh`, gate `round3/r3_gatecheck.py`, power analysis `round3/power/` | `round3/confirm3_analyze.py` | `round3` |
+| final comparison (version 1.1's class, early stop, freeze and no freeze) | `final_grid.py`, `final_launch.sh`; checks `verify_head.py`, `final_check.py` | `final_analyze.py` | `final_comparison` |
+| optimized GPU e-means and o-means | `../gpu/fast_run.py` | `../gpu/tools/` | `gpu_optimized/` |
 
 The runners write one JSON file per run (atomically; a stopped grid resumes where it stopped and refuses records made
-with other code). The newer-driver runs need the PR's head commit 79440bc as an overlay (`FAISS_OVERLAY`, see
+with other code; it does not check that a resumed run uses the same machine or thread count, so resume with the same
+settings). `--host` must be one of the names in the placement table of `confirm2_grid.py` (`host_a`, `host_b`): for
+another name a runner schedules nothing. The newer-driver runs need the PR's head commit 79440bc as an overlay (`FAISS_OVERLAY`, see
 `prhead_grid.py`); the GPU runs need PyTorch with Triton and, for o-means, the o-means package.

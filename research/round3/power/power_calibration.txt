@@ -1,0 +1,8 @@
+interval: 34 cells, exploratory seeds 0-4; reps 20000
+  every 1 vs 5, test: skewness of L_s +0.82; t rejection at the margin, n=100, alpha/12 = 0.00417: lower 0.00195, upper 0.00765
+  every 1 vs 5, train: skewness of L_s +0.02; t rejection at the margin, n=100, alpha/12 = 0.00417: lower 0.00410, upper 0.00430
+  every 2 vs 5, test: skewness of L_s +0.84; t rejection at the margin, n=100, alpha/12 = 0.00417: lower 0.00310, upper 0.00655
+  every 2 vs 5, train: skewness of L_s +0.71; t rejection at the margin, n=100, alpha/12 = 0.00417: lower 0.00205, upper 0.00655
+head driver, 5 epochs: 34 cells, exploratory seeds 30-39
+  without vs with the freeze, test: skewness +0.42; t rejection at the margin, n=40, alpha/8 = 0.00625: lower 0.00425, upper 0.00960
+  without vs with the freeze, train: skewness -0.32; t rejection at the margin, n=40, alpha/8 = 0.00625: lower 0.00770, upper 0.00495

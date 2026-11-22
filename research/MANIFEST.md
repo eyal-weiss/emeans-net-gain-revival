@@ -44,3 +44,24 @@ records name the originals, whose hashes are listed. `ngp_decide.cpp` differs fr
 | `stopm_analyze.py` | 8ea8afc4eba03e75 | 8ea8afc4eba03e75 |  |
 | `stopmeasure_grid.py` | 614d06213477c5da | 614d06213477c5da |  |
 | `verify_clean.py` | aecc2f43ea21b568 | - | new (not used in the runs) |
+
+## Added in version 1.1
+
+Round 3 ran the files below in `round3/` (two of them are newer versions of `interval_grid.py` and `prhead_grid.py`
+above, which stay as they were for the earlier runs) together with `ngp_interval.py`, `ngp_head.py`, `netgain_rule.py` and
+the other round-2 files above. The final comparison ran `final_grid.py` with version 1.1's package (`net_gain_revival/`).
+
+| file | sha256[:16] released | sha256[:16] in the records | difference |
+|---|---|---|---|
+| `round3/interval_grid.py` | d8661261e5bb586a | d8661261e5bb586a |  |
+| `round3/prhead_grid.py` | bab5ed3e080c41d3 | bab5ed3e080c41d3 |  |
+| `round3/round3_prhead.py` | 31ae07126f2abf6a | 31ae07126f2abf6a |  |
+| `round3/r3_gatecheck.py` | 2a1fc09a960615ec | 2a1fc09a960615ec |  |
+| `round3/launch_r3.sh` | 39460f1400d16cda | acb918fa4d7b4630 | host names and paths replaced |
+| `round3/confirm3_analyze.py` | 73f0170bf7241e47 | b71360c2f93f2fa0 | host names replaced |
+| `round3/power/power_calibration.py` | 4f2190ffe3f39460 | - | the power analysis (not a runner) |
+| `final_grid.py` | 14c764365b826c50 | 14c764365b826c50 |  |
+| `final_launch.sh` | ca78961c26650be9 | 62fb3f10eea2a70b | host names and paths replaced |
+| `final_check.py` | 3d60ebddea482e26 | - | new (a check, not a runner) |
+| `final_analyze.py` | f018ca176245a334 | - | new (analysis) |
+| `verify_head.py` | 62a18c456476be94 | - | new (a check, not a runner) |

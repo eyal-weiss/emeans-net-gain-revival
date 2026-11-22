@@ -24,16 +24,28 @@ combinations, 20 unused seeds), it lowers the test error by 2.9% and the trainin
 5.0% and 7.1% after five. With k-means++ starts its test error is 2.4% higher (Shuttle, one isolated test point). It
 takes about 7% longer than the PR's rule; the early stop saves about 5% with five or ten epochs.
 
+**Version 1.1** follows the PR to its current driver (commit 79440bc), which moves centres until the end of training and
+sorts out the last pass at the end. On that driver the rule no longer stops moving one pass before the end (the
+freeze of the PR's earlier driver, now the option `freeze=True`): in a third pre-registered round, dropping the freeze
+lowered the test error by 1.3% and the training error by 2.3% at two epochs and changed both by less than 1% at five.
+A final comparison of the released class, with the early stop, on the same 34 combinations and seeds: without
+the freeze it lowers the test error by 4.4% and the training error by 16.9% relative to the PR's rule at two epochs
+(3.8% and 11.0% at five) and takes a median 7% longer (4% at five); with the freeze, 3.2% and 15.0% (3.9% and 10.6%)
+for 2% (4%) more time. Dropping the freeze is therefore the default on that driver.
+Version 1.1 also adds optimized GPU implementations for FAISS's GPU e-means and for o-means (`gpu/`).
+
 ## Installation
 
-The rule runs on the driver of PR #5915 at commit 98deaca, which is not in a FAISS release. Build FAISS from that commit
+The rule runs on the driver of PR #5915, which is not in a FAISS release: at the PR's head (commit 79440bc, the
+default since version 1.1), or at 98deaca, the commit of the paper's first two rounds, where `NetGainRevivalEmeans` is
+version 1.0.0's class, unchanged (the package picks the class for the installed driver). Build FAISS from the commit
 (CPU), then the two C++ kernels:
 
 ```bash
 conda create -y -n emeans_pr5915 -c conda-forge python=3.12 "numpy>=2,<2.6" scipy "cmake>=3.24" "swig>=4.1" openblas \
     "libblas=*=*openblas" "liblapack=*=*openblas" cxx-compiler c-compiler make pip setuptools pytest
 conda activate emeans_pr5915
-git clone https://github.com/lcabannes/faiss-emeans.git faiss_src && cd faiss_src && git checkout 98deaca
+git clone https://github.com/lcabannes/faiss-emeans.git faiss_src && cd faiss_src && git checkout 79440bc   # or 98deaca
 cmake -B build -DFAISS_ENABLE_GPU=OFF -DFAISS_ENABLE_PYTHON=ON -DBUILD_TESTING=OFF -DFAISS_ENABLE_C_API=OFF \
       -DFAISS_OPT_LEVEL=avx2 -DBLA_VENDOR=OpenBLAS -DCMAKE_BUILD_TYPE=Release -DPython_EXECUTABLE="$(which python)"
 make -C build -j 16 swigfaiss swigfaiss_avx2 && (cd build/faiss/python && pip install .) && cd ..
@@ -48,29 +60,38 @@ import numpy as np
 from net_gain_revival import NetGainRevivalEmeans
 
 x = np.random.rand(200_000, 16).astype("float32")
-km = NetGainRevivalEmeans(x.shape[1], 1024, nepochs=2)    # stat="medg_pm", early_stop="hl"
+km = NetGainRevivalEmeans(x.shape[1], 1024, nepochs=2)    # stat="medg_pm", early_stop="hl", freeze=False
 centroids, _ = km.train(x)
 print(km.n_splits, km.es_stop_step)
 ```
 
 `stat="medg_fh"` uses a Fay-Herriot prior (the paper's alternative); `early_stop=None` keeps the move phase until the
-PR's freeze, and a float `eps` also ends it when the predicted net gain of a check falls below `eps` times the batch's
-squared error. `net_gain_revival.rule.decide` is the decision as a pure NumPy function of per-centre statistics, for
-other implementations. `NetGainRevivalEmeans` (about 200 lines, `net_gain_revival/emeans.py`) makes the same moves and
-reaches the same final centres, bit for bit, as the research code that produced the paper's runs
-(`research/verify_clean.py`; `results/clean_equivalence.jsonl.gz`).
+end (or until the freeze), and a float `eps` also ends it when the predicted net gain of a check falls below `eps` times
+the batch's squared error; `freeze=True` (head driver) stops moves once less than one pass remains, as the PR's earlier
+driver did. `net_gain_revival.rule.decide` is the decision as a pure NumPy function of per-centre statistics, for other
+implementations. Both classes (about 200 lines each) make the same moves and reach the same final centres, bit for bit,
+as the research code that produced the paper's runs: on 98deaca, `research/verify_clean.py`
+(`results/clean_equivalence.jsonl.gz`); on the head, `research/verify_head.py` and the reproduction part of the final
+comparison (every run identical to round 3's records; `results/final_comparison.jsonl.gz`). This holds in every run
+compared, not for every conceivable input: the C++ per-point sums add each projection's terms in order where NumPy's
+`einsum` may not, and the head class computes the raw gain as ((2/pi) * scale) * |U| as version 1.0.0 does, where round
+3's research class computes (2/pi) * (scale * |U|); with constructed inputs (huge cancelling coordinates, or a gain equal
+to a cost to the last bit) either can break an exact tie differently.
 
 ## CPU and GPU
 
 `NetGainRevivalEmeans` is a CPU implementation (the NumPy e-means of PR #5915, with optional C++ kernels); all results
-of the paper's two pre-registered rounds are CPU results. For GPU we provide only first, simple working versions, to check
-that the rule carries over: `research/netgain_torch.py` for the PR's PyTorch e-means and `research/omeans_netgain.py` for
-[o-means](https://owlgebra.ai/blog/o-means/). In exploratory runs on one GPU they behaved like the CPU version (training
-error 31% lower than the PR's GPU rule on 12 dataset-k combinations; test error 67% lower than o-means' own rule on 9),
-but they are **not optimized**: the decision runs on the host, the per-point statistics use plain PyTorch operations, and
-the PyTorch e-means version gives up the library's CUDA-graph replay. They take about 2.3 times as long as the PR's GPU
-rule without CUDA graphs (about 9 times with them) and about 5 times as long as o-means. An optimized GPU implementation
-(statistics in the assignment kernels, the decision on the device) is future work.
+of the paper's pre-registered rounds are CPU results. Version 1.1 adds optimized GPU implementations (`gpu/`): the rule
+inside the PR's PyTorch e-means (either driver) and inside [o-means](https://owlgebra.ai/blog/o-means/), with the
+per-batch statistics inside the drivers' CUDA graphs and the whole check on the device. Given the same state they make
+the same decisions as the C++ decision. On one RTX 3090 Ti at two epochs they take 1.66 times as long as the PR's GPU
+rule without the freeze (1.33 with it), and 1.73 times as long as o-means' own rule; these runs last 20-400 ms, so the
+extra time is 10-170 ms per run, and its share falls on larger data (at 10 million points, 12% without the freeze and 7%
+with it). In exploratory runs they behave like the CPU version: on the 34 combinations at two epochs, dropping the
+freeze lowered the test error by 1.7% and the training error by 4.2%; in o-means the rule lowered the test error of
+o-means' own rule by 32%. `gpu/README.md` gives the details, and what porting the rule to very large problems (billions
+of points, millions of centres, several GPUs) would need. The unoptimized GPU proofs of concept of version 1.0.0 stay in
+`research/`.
 
 ## Contents
 
@@ -84,12 +105,14 @@ rule without CUDA graphs (about 9 times with them) and about 5 times as long as 
   (`omeans_netgain.py`; see "CPU and GPU"), and every runner and analysis. `research/README.md` maps runners to records,
   `research/MANIFEST.md` lists the code hashes, and `research/PROVENANCE.md` says which records the code reproduces and
   which options are known to be flawed or superseded.
-- `results/`: the records of every run of the two pre-registered rounds and of the later experiments (JSON lines,
-  25,113 runs); `results/development/`: the records of the development runs (about 220,000 run and calibration records),
-  made by earlier states of the research code.
+- `results/`: the records of every run of the pre-registered rounds and of the later experiments (JSON lines; version
+  1.0.0: 25,113 runs; version 1.1 adds `round3.jsonl.gz`, `final_comparison.jsonl.gz` and the GPU records in
+  `gpu_optimized/`); `results/development/`: the records of the development runs (about 220,000 run and calibration
+  records), made by earlier states of the research code.
+- `gpu/` (version 1.1): the optimized GPU implementations, their tests and tools (see `gpu/README.md`).
 - `docs/technical_report.pdf`: every alternative tried during development, what happened and why, with pointers to the
-  records; read it to understand the released data. `docs/protocols/`: the two pre-registered protocols, the
-  specification of the round-2 variants, and an index of everything tried.
+  records; read it to understand the released data. `docs/protocols/`: the pre-registered protocols (rounds 1-3), the
+  analysis plan of the final comparison, the specification of the round-2 variants, and an index of everything tried.
 
 The experiments ran on two machines, named `host_a` and `host_b` in the code and records. The rule builds on
 [distance-aware revival](https://github.com/eyal-weiss/emeans-distance-revival) (arXiv:2611.18238), the earlier paper's

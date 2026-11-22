@@ -1,18 +1,25 @@
-"""NetGainRevivalEmeans: e-means with net-gain revival, on the e-means driver of FAISS pull request #5915 (98deaca).
+"""NetGainRevivalEmeans: e-means with net-gain revival, on the e-means driver of FAISS pull request #5915 at its head
+(commit 79440bc).
 
-The driver keeps its schedule, EMA updates, split statistics U (Oja's rule) and axis split. This class changes only the
-revival check (which centres to free and which clusters to split) and adds what the decision needs:
-  * while moves are allowed, every point's two nearest centres are found; its margin d2 - d1 and its projection on its
-    cluster's split axis are added to per-centre sums since birth (counts, margins, squared margins, p^2, p^4);
+The driver keeps its schedule, EMA updates, split statistics U (Oja's rule), axis split, cost-based statistics and
+closing handover: moves may continue through the last pass, whose rows held by a centre when it moved are handed to
+their second-nearest centre or assigned again at the end, and every centre then returns the mean of its last-pass rows.
+This class changes only the revival check (which centres to free and which clusters to split) and adds what the
+decision needs:
+  * while moves are allowed, every point's margin d2 - d1 (from the driver's own two-nearest search) and its
+    projection on its cluster's split axis are added to per-centre sums since birth (counts, margins, squared margins,
+    p^2, p^4);
   * per centre: batches and points since birth, and the coefficient h of statistics inherited at the last split;
   * at each check (every five batches): rule.decide, with a cool-down (a centre with h > 1/2 is neither freed nor used
-    as a donor) and the pair guard; the split itself is the driver's axis split;
-  * no move once less than one pass remains (the pull request's freeze), and an automatic early end of the move phase
-    once one EMA half-life has passed without a check that accepted a move (early_stop="hl", the default).
+    as a donor) and the pair guard; the split itself is the driver's (which also records it for the closing handover);
+  * an automatic early end of the move phase once one EMA half-life has passed without a check that accepted a move
+    (early_stop="hl", the default);
+  * freeze=True: no move once less than one pass remains (the timing of the pull request at 98deaca, which the paper's
+    first two rounds used). The default, freeze=False, keeps moving until the end, like the driver's own rule.
 
-Identical decisions to the research code of the paper (research/ngp_stop.py, ngp_fast.py, ngp_variants*.py,
-ablation*.py with the paper's configuration), with the NumPy computations or with the optional C++ kernels
-(native/build.sh); tests/test_netgain.py checks this.
+Identical decisions to the research code of the paper's third round on this driver (research/ngp_head.py with the
+guard, early_stop=None), with the NumPy computations or with the optional C++ kernels (native/build.sh);
+tests/test_netgain.py and research/verify_head.py check this.
 """
 import math
 import os
@@ -21,9 +28,12 @@ import numpy as np
 import faiss
 from faiss.contrib.e_means import NumpyEmeans
 from faiss.contrib.e_means.base import _scheduled_alpha
-from faiss.contrib.e_means.e_means import _separate_splits
 
 from . import native, rule
+
+if not hasattr(NumpyEmeans, "_handover_start"):
+    raise ImportError("this module needs the e-means driver of PR #5915 at its head (79440bc); "
+                      "net_gain_revival.emeans_98deaca serves the driver at 98deaca")
 
 
 class NetGainRevivalEmeans(NumpyEmeans):
@@ -32,76 +42,84 @@ class NetGainRevivalEmeans(NumpyEmeans):
     stat: "medg_pm" (posterior median gain, Paule-Mandel prior; the paper's rule) or "medg_fh" (Fay-Herriot prior).
     early_stop: "hl" (end the move phase after one EMA half-life without an accepted move), a float eps (a check also
         counts as quiet when the predicted net gain of its moves is below eps times the last batch's squared error), or
-        None (moves until the freeze).
+        None (moves until the end, or until the freeze).
+    freeze: True stops moves once less than one pass remains (default False).
     use_native: use the C++ kernels (default: when built). Other arguments are NumpyEmeans's (e.g. nepochs, seed).
-    After train(): n_splits, n_checks, n_candidates, es_stop_step (None if the early stop did not fire).
+    After train(): n_splits, n_checks, n_candidates, n_moves_last_pass, es_stop_step (None if the early stop did not
+    fire), closing_handover_stats (the driver's).
     """
 
-    def __init__(self, d, k, *args, stat="medg_pm", early_stop="hl", use_native=None, **kw):
+    def __init__(self, d, k, *args, stat="medg_pm", early_stop="hl", freeze=False, use_native=None, **kw):
         assert stat in rule.STATS, stat
         assert early_stop is None or early_stop == "hl" or (isinstance(early_stop, float) and early_stop > 0)
-        if "unused_threshold" in kw:
-            raise ValueError("net-gain revival replaces the size threshold; do not set unused_threshold")
-        # The driver runs in its count mode with the split statistics kept (its own second-nearest search is not
-        # needed: this class searches the two nearest centres itself) and the freeze is applied by _frozen below.
-        super().__init__(d, k, *args, unused_threshold=0.1, **kw)
-        self.stat, self.early_stop = stat, early_stop
+        if kw.get("unused_threshold") is not None:
+            raise ValueError("net-gain revival replaces the revival rule and needs the driver's cost-based statistics; "
+                             "do not set unused_threshold")
+        super().__init__(d, k, *args, **kw)
+        if self.spherical:
+            raise ValueError("net-gain revival is defined for squared Euclidean distances (spherical=False)")
+        self.stat, self.early_stop, self.freeze = stat, early_stop, bool(freeze)
         self.use_native = native.available() if use_native is None else bool(use_native)
         if self.use_native and not native.available():
             raise RuntimeError("C++ kernels not built: run net_gain_revival/native/build.sh")
-        self.n_checks = self.n_candidates = 0
+        self.n_checks = self.n_candidates = self.n_moves_last_pass = 0
         self.es_stop_step = None
+        self._m_n = None
 
     # ------------------------------------------------------------------ driver hooks
-    def _keeps_removal_stats(self):
-        return True
-
-    def _frozen(self):
-        """No move once less than one pass remains (the pull request's freeze), or after the early stop."""
-        if getattr(self, "_es_stopped", False):
-            return True
-        rows = self.recipe["epoch_rows"]
-        done = sum(rows[:self._epoch]) + min(rows[self._epoch], self._epoch_rows + self.recipe["batch_size"])
-        return len(rows) > 1 and done >= self._n and sum(rows) - done < self._n
-
     def begin(self, global_n, init_centroids):
         super().begin(global_n, init_centroids)
+        self.es_stop_step = None
+        if self._unused_threshold is not None:      # k = 1: the driver revives nothing, and neither does this class
+            self._m_n = None
+            return
         k = self.k
-        self._moved = np.zeros(k, dtype=bool)          # centres moved by splits (for the driver's closing step)
         z = lambda: np.zeros(k, dtype=np.float64)
         self._stale, self._cum_n, self._age = z(), z(), z()              # h_j; points and batches since birth
         self._m_n, self._m_sum, self._m_sq, self._p2, self._p4 = z(), z(), z(), z(), z()
         self._decay_prod = 1.0                                            # prod(1 - alpha_t) since the start
         self._prev_delta = None
         self._es_stopped, self._es_logq, self._es_obj = False, 0.0, None
-        self.es_stop_step = None
 
-    def _assign_rows(self, x, centroids, second_out=None):
-        if second_out is not None or self._centroids is None or len(x) == 0 or len(centroids) < 2 or self._frozen():
-            return super()._assign_rows(x, centroids, second_out)
-        xs = np.ascontiguousarray(x, dtype=np.float32)
-        D, I = faiss.knn(xs, centroids, 2)
+    def _moves_allowed(self):
+        """False after the early stop, and with freeze=True once less than one pass remains after this batch."""
+        if self._es_stopped:
+            return False
+        if not self.freeze:
+            return True
+        rows = self.recipe["epoch_rows"]
+        done = sum(rows[:self._epoch]) + min(rows[self._epoch], self._epoch_rows + self.recipe["batch_size"])
+        return not (len(rows) > 1 and done >= self._n and sum(rows) - done < self._n)
+
+    def _assign_rows(self, x, centroids, second_out=None, second_labels_out=None):
+        distance, labels = super()._assign_rows(x, centroids, second_out, second_labels_out)
+        # The driver asks for the second-nearest distances whenever it tracks its cost-based statistics, that is for
+        # every training row (not for the rows its closing handover assigns again).
+        if second_out is None or self._m_n is None or len(x) == 0 or not self._moves_allowed():
+            return distance, labels
         if self.use_native:
-            return native.margin_stats(xs, np.ascontiguousarray(D), np.ascontiguousarray(I),
-                                       np.ascontiguousarray(centroids, dtype=np.float32), self._axes, self._m_n,
-                                       self._m_sum, self._m_sq, self._p2, self._p4,
-                                       max(1, int(os.environ.get("OMP_NUM_THREADS", "1"))))
-        lab = np.where(D[:, 0] == D[:, 1], I.min(axis=1), I[:, 0])            # ties go to the lowest index
-        other = np.where(I[:, 0] == lab, D[:, 1], D[:, 0]).astype(np.float64)
-        margin = np.maximum(other - D[:, 0].astype(np.float64), 0.0)
-        margin = np.where(np.isfinite(margin), margin, 0.0)
+            native.margin_stats_labeled(
+                np.ascontiguousarray(x, dtype=np.float32), np.ascontiguousarray(distance, dtype=np.float32),
+                np.ascontiguousarray(second_out, dtype=np.float32), np.ascontiguousarray(labels, dtype=np.int64),
+                np.ascontiguousarray(centroids, dtype=np.float32), self._axes, self._m_n, self._m_sum, self._m_sq,
+                self._p2, self._p4, max(1, int(os.environ.get("OMP_NUM_THREADS", "1"))))
+            return distance, labels
         k = self.k
-        self._m_n += np.bincount(lab, minlength=k)
-        self._m_sum += np.bincount(lab, weights=margin, minlength=k)
-        self._m_sq += np.bincount(lab, weights=margin * margin, minlength=k)
-        y = xs.astype(np.float64) - centroids[lab].astype(np.float64)
-        p = np.einsum("ij,ij->i", y, self._axes[lab].astype(np.float64))
-        self._p2 += np.bincount(lab, weights=p * p, minlength=k)
-        self._p4 += np.bincount(lab, weights=p ** 4, minlength=k)
-        return np.ascontiguousarray(D[:, 0], dtype=np.float32), lab.astype(np.int64)
+        margin = np.maximum(np.asarray(second_out, dtype=np.float64) - np.asarray(distance, dtype=np.float64), 0.0)
+        margin = np.where(np.isfinite(margin), margin, 0.0)
+        self._m_n += np.bincount(labels, minlength=k)
+        self._m_sum += np.bincount(labels, weights=margin, minlength=k)
+        self._m_sq += np.bincount(labels, weights=margin * margin, minlength=k)
+        y = np.asarray(x, dtype=np.float64) - centroids[labels].astype(np.float64)
+        p = np.einsum("ij,ij->i", y, self._axes[labels].astype(np.float64))
+        self._p2 += np.bincount(labels, weights=p * p, minlength=k)
+        self._p4 += np.bincount(labels, weights=p ** 4, minlength=k)
+        return distance, labels
 
     def _apply_statistics(self, ids, sums, counts, objective, alpha, decay, replace_usage=False):
         super()._apply_statistics(ids, sums, counts, objective, alpha, decay, replace_usage)
+        if self._m_n is None:
+            return
         g = 0.0 if replace_usage else decay
         self._stale *= g
         self._decay_prod *= g
@@ -117,7 +135,9 @@ class NetGainRevivalEmeans(NumpyEmeans):
 
     # ------------------------------------------------------------------ the check
     def _choose_splits(self, rng):
-        if self._frozen():
+        if self._m_n is None:
+            return super()._choose_splits(rng)
+        if not self._moves_allowed():
             return None, None
         C = np.ascontiguousarray(self._centroids)
         D, I = faiss.knn(C, C, 2)
@@ -137,6 +157,8 @@ class NetGainRevivalEmeans(NumpyEmeans):
         self._prev_delta = delta
         self.n_checks += 1
         self.n_candidates += info["n_candidates"]
+        if src is not None and self._epoch == len(self.recipe["epoch_rows"]) - 1:
+            self.n_moves_last_pass += len(src)
         if self.early_stop is not None:
             self._early_stop_check(src, tgt, info)
         return src, tgt
@@ -155,35 +177,12 @@ class NetGainRevivalEmeans(NumpyEmeans):
             self._es_stopped = True
             self.es_stop_step = int(self._step)
 
-    def _split_positions(self, source):
-        """The driver's axis split: c_s -/+ a_s u_s with a_s = sqrt(2 |U_s| / (pi N_s))."""
-        centroids = self._centroids[source].astype("float64")
-        norm = self._axis_scale * np.linalg.norm(self._removal_stats[source, :-1].astype("float64"), axis=1)
-        mass = self._usage[source].astype("float64")
-        valid = (norm > 0) & (mass > 0) & np.isfinite(norm) & np.isfinite(mass)
-        spread = np.sqrt(2.0 * np.where(valid, norm / np.where(valid, mass, 1.0), 0.0) / np.pi)
-        offset = spread[:, None] * self._axes[source].astype("float64")
-        donor = (centroids - offset).astype("float32")
-        child = (centroids + offset).astype("float32")
-        _separate_splits(donor, child)
-        return donor, child
-
     def _apply_splits(self, source, target):
-        donor, child = self._split_positions(source)
-        half_usage = self._usage[source] / 2.0
-        self._usage[source] = half_usage
-        self._centroids[source] = donor
-        self._usage[target] = half_usage
-        self._centroids[target] = child
-        if self._removal_stats is not None:
-            self._removal_stats[source] /= 2
-            self._removal_stats[target] = self._removal_stats[source]
-            self._axes[target] = self._axes[source]
-        if self._pass_sums is not None and self._moved is not None:
-            self._moved[source] = self._moved[target] = True
-        self._stale[source] = self._stale[target] = 1.0                   # cool-down starts
-        for arr in (self._cum_n, self._age, self._m_n, self._m_sum, self._m_sq, self._p2, self._p4):
-            arr[source] = arr[target] = 0.0                               # evidence since birth restarts
-        self.n_splits += len(source)
-        self._invalidate_readout()
-        return len(source)
+        """The driver's axis split (which also records the move for the closing handover); evidence since birth
+        restarts at both ends, and the cool-down starts."""
+        n = super()._apply_splits(source, target)
+        if self._m_n is not None:
+            for arr in (self._cum_n, self._age, self._m_n, self._m_sum, self._m_sq, self._p2, self._p4):
+                arr[source] = arr[target] = 0.0
+            self._stale[source] = self._stale[target] = 1.0
+        return n

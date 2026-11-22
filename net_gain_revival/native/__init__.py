@@ -15,6 +15,8 @@ def available():
         P, I, D = ctypes.c_void_p, ctypes.c_int64, ctypes.c_double
         lib.ngp_margin_stats.restype = ctypes.c_int
         lib.ngp_margin_stats.argtypes = [I, I, I] + [P] * 12 + [ctypes.c_int]
+        lib.ngp_margin_stats_labeled.restype = ctypes.c_int
+        lib.ngp_margin_stats_labeled.argtypes = [I, I, I] + [P] * 11 + [ctypes.c_int]
         lib.ngp_decide.restype = I
         lib.ngp_decide.argtypes = ([I, I, P, P, I, D, P, P, P, D, D, D] + [P] * 7 +
                                    [ctypes.c_int, P, D, P, ctypes.c_int] + [P] * 8)
@@ -39,6 +41,17 @@ def margin_stats(x, D, I, C, A, m_n, m_sum, m_sq, p2, p4, threads):
     if rc != 0:
         raise RuntimeError("ngp_margin_stats: label out of range")
     return dist, labels
+
+
+def margin_stats_labeled(x, dist, second, labels, C, A, m_n, m_sum, m_sq, p2, p4, threads):
+    """Adds the per-cluster sums in place from the driver's assignment (nearest and second-nearest distances, labels)."""
+    n, d = x.shape
+    rc = _LIB.ngp_margin_stats_labeled(n, d, len(C), _p(x, np.float32), _p(dist, np.float32), _p(second, np.float32),
+                                       _p(labels, np.int64), _p(C, np.float32), _p(A, np.float32), _p(m_n, np.float64),
+                                       _p(m_sum, np.float64), _p(m_sq, np.float64), _p(p2, np.float64),
+                                       _p(p4, np.float64), threads)
+    if rc != 0:
+        raise RuntimeError("ngp_margin_stats_labeled: label out of range")
 
 
 def decide(usage, removal_stats, gscale, stale, age, cum, decay_prod, alpha, step, m_n, m_sum, m_sq, p2, p4, D, I,
