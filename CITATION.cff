@@ -13,6 +13,9 @@ identifiers:
     value: 10.5281/zenodo.24389631
     description: "All versions (Zenodo concept DOI)"
   - type: doi
+    value: 10.5281/zenodo.24452176
+    description: "Version 1.1.0"
+  - type: doi
     value: 10.5281/zenodo.24389632
     description: "Version 1.0.0"
 license: MIT

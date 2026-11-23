@@ -4,6 +4,7 @@ Versions are tagged; each release is archived on Zenodo with its own DOI. Record
 released version are never changed later; new studies are added next to them.
 
 ## v1.1.0 (2026-11)
+Archived on Zenodo: [10.5281/zenodo.24452176](https://doi.org/10.5281/zenodo.24452176).
 Follows pull request #5915 to its current driver (commit 79440bc), and adds the third pre-registered round, a final
 comparison of the released class, and optimized GPU implementations.
 - `net_gain_revival/emeans.py`: the class for the PR's head driver. By default the rule now keeps moving until the end

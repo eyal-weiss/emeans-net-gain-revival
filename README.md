@@ -120,8 +120,9 @@ code. Third-party notices: `NOTICE`.
 
 ## Citation
 
-The code and data are archived on Zenodo: version 1.0.0, [10.5281/zenodo.24389632](https://doi.org/10.5281/zenodo.24389632);
-all versions, [10.5281/zenodo.24389631](https://doi.org/10.5281/zenodo.24389631).
+The code and data are archived on Zenodo: version 1.1.0, [10.5281/zenodo.24452176](https://doi.org/10.5281/zenodo.24452176);
+version 1.0.0, [10.5281/zenodo.24389632](https://doi.org/10.5281/zenodo.24389632); all versions,
+[10.5281/zenodo.24389631](https://doi.org/10.5281/zenodo.24389631).
 
 ```bibtex
 @misc{weiss2026netgain,
