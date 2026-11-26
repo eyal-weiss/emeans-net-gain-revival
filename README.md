@@ -36,8 +36,9 @@ Version 1.1 also adds optimized GPU implementations for FAISS's GPU e-means and 
 
 ## Installation
 
-The rule runs on the driver of PR #5915, which is not in a FAISS release: at the PR's head (commit 79440bc, the
-default since version 1.1), or at 98deaca, the commit of the paper's first two rounds, where `NetGainRevivalEmeans` is
+The rule runs on the driver of PR #5915, which was merged into FAISS on 22 November 2026 (commit 16a95d6) but is not
+yet in a FAISS release: at commit 79440bc (the default since version 1.1; the merged code changes the rule only in how
+the GPU driver orders donors with NaN statistics), or at 98deaca, the commit of the paper's first two rounds, where `NetGainRevivalEmeans` is
 version 1.0.0's class, unchanged (the package picks the class for the installed driver). Build FAISS from the commit
 (CPU), then the two C++ kernels:
 
